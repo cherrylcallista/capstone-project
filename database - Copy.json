@@ -1,0 +1,168 @@
+{
+  "accounts": [
+    {
+      "account": {
+        "username": "Cherryl Callista",
+        "email": "cherrylcallistacheniago@gmail.com",
+        "profilePicture": "",
+        "passwordHash": "ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f",
+        "settings": {
+          "hideEmail": false,
+          "language": "id",
+          "theme": "light"
+        }
+      },
+      "timer": {
+        "savedIntervals": [
+          {
+            "activeTime": 1500,
+            "restTime": 300,
+            "favorite": true
+          },
+          {
+            "activeTime": 900,
+            "restTime": 300,
+            "favorite": false
+          },
+          {
+            "activeTime": 3000,
+            "restTime": 0,
+            "favorite": false
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": 1,
+          "detail": "Buat ppt presentasi",
+          "addedTime": "...",
+          "dueDate": "...",
+          "markedAsFinished": false,
+          "repeatTask": false,
+          "repeatEvery": null,
+          "category": ""
+        }
+      ]
+    },
+    {
+      "account": {
+        "id": 2,
+        "username": "Haciu",
+        "email": "haciu@gmail.com",
+        "profilePicture": "",
+        "passwordHash": "fb72a905a57f81e8358e432b7c699ff6987200697366167e4ba962953b072868",
+        "settings": {
+          "hideEmail": false,
+          "language": "id",
+          "theme": "light"
+        }
+      },
+      "timer": {
+        "savedIntervals": []
+      },
+      "tasks": [
+        {
+          "id": 1,
+          "detail": "wdwadaw",
+          "addedTime": "2026-10-01T13:46:43.613Z",
+          "dueDate": "2026-10-27",
+          "markedAsFinished": true,
+          "repeatTask": true,
+          "repeatEvery": "monthly",
+          "category": "Kategori 4",
+          "matrix": 3,
+          "isTodo": true
+        },
+        {
+          "id": 2,
+          "detail": "egsfwawa",
+          "addedTime": "2026-10-05T05:07:59.253Z",
+          "dueDate": "2026-10-27",
+          "markedAsFinished": false,
+          "repeatTask": true,
+          "repeatEvery": "yearly",
+          "category": "Kategori 4",
+          "matrix": 4,
+          "isTodo": true
+        },
+        {
+          "id": 3,
+          "detail": "rtfygh",
+          "addedTime": "2026-10-05T05:22:04.343Z",
+          "dueDate": "2026-09-28",
+          "markedAsFinished": false,
+          "repeatTask": false,
+          "repeatEvery": null,
+          "category": "",
+          "isTodo": true
+        },
+        {
+          "id": 4,
+          "detail": "tes",
+          "addedTime": "2026-10-05T05:54:45.712Z",
+          "dueDate": null,
+          "markedAsFinished": false,
+          "repeatTask": false,
+          "repeatEvery": null,
+          "category": "Rawr",
+          "isTodo": true
+        },
+        {
+          "id": 5,
+          "detail": "tes",
+          "addedTime": "2026-10-05T06:12:42.008Z",
+          "dueDate": null,
+          "markedAsFinished": false,
+          "repeatTask": false,
+          "repeatEvery": null,
+          "category": "",
+          "matrix": 4,
+          "isTodo": true
+        },
+        {
+          "id": 6,
+          "detail": "Tugas skripsi",
+          "addedTime": "2026-10-09T03:04:49.838Z",
+          "dueDate": "2026-10-09",
+          "markedAsFinished": false,
+          "repeatTask": false,
+          "repeatEvery": null,
+          "category": "",
+          "isTodo": true
+        },
+        {
+          "id": 7,
+          "detail": "Presentasi",
+          "addedTime": "2026-10-09T03:10:53.886Z",
+          "dueDate": "2026-10-09",
+          "markedAsFinished": false,
+          "repeatTask": false,
+          "repeatEvery": null,
+          "category": "",
+          "matrix": 1,
+          "isTodo": false
+        }
+      ],
+      "categories": [
+        "Rawr"
+      ]
+    },
+    {
+      "account": {
+        "username": "Duar",
+        "email": "duar@gmail.com",
+        "profilePicture": "",
+        "passwordHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+        "settings": {
+          "hideEmail": false,
+          "language": "id",
+          "theme": "light"
+        }
+      },
+      "timer": {
+        "savedIntervals": []
+      },
+      "tasks": []
+    }
+  ]
+}

@@ -1,6 +1,23 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import type { AccountType, AuthResponse, TaskType } from './types';
+import * as Network from 'expo-network';
+import * as SecureStore from 'expo-secure-store';
+import type { AccountType, AuthResponse, ScheduleBlockType, TaskType } from './types';
+import {
+  createLocalCategory,
+  deleteLocalSchedule,
+  createLocalTask,
+  getCachedCategories,
+  getCachedSchedules,
+  getCachedTasks,
+  getPendingChanges,
+  reconcileRemoteData,
+  subscribeToLocalDataChanges,
+  saveLocalSchedule,
+  updateLocalTask,
+} from './offlineStore';
+
+export { subscribeToLocalDataChanges };
 
 function getDefaultApiUrl() {
   const host = Constants.expoConfig?.hostUri?.split(':')[0];
@@ -14,42 +31,58 @@ function getDefaultApiUrl() {
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? getDefaultApiUrl();
 const AUTH_STORAGE_KEY = 'capstone-auth';
 let memoryAuth: AuthResponse | null = null;
+let syncInFlight: Promise<void> | null = null;
+let networkSubscription: ReturnType<typeof Network.addNetworkStateListener> | null = null;
 
-function getStorage(): Storage | null {
-  return typeof localStorage === 'undefined' ? null : localStorage;
+function getWebStorage(): Storage | null {
+  return Platform.OS === 'web' && typeof localStorage !== 'undefined' ? localStorage : null;
 }
 
-function getStoredAuth(): AuthResponse | null {
+async function getStoredAuth(): Promise<AuthResponse | null> {
   if (memoryAuth) {
     return memoryAuth;
   }
 
-  const storage = getStorage();
-  if (!storage) {
+  const storage = getWebStorage();
+  const storedAuth = storage
+    ? storage.getItem(AUTH_STORAGE_KEY)
+    : await SecureStore.getItemAsync(AUTH_STORAGE_KEY);
+  if (!storedAuth) {
     return null;
   }
 
   try {
-    const storedAuth = storage.getItem(AUTH_STORAGE_KEY);
-    memoryAuth = storedAuth ? (JSON.parse(storedAuth) as AuthResponse) : null;
+    memoryAuth = JSON.parse(storedAuth) as AuthResponse;
     return memoryAuth;
   } catch {
-    storage.removeItem(AUTH_STORAGE_KEY);
+    if (storage) {
+      storage.removeItem(AUTH_STORAGE_KEY);
+    } else {
+      await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
+    }
     return null;
   }
 }
 
-function saveAuth(auth: AuthResponse) {
+async function saveAuth(auth: AuthResponse) {
   memoryAuth = auth;
-  getStorage()?.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
+  const storage = getWebStorage();
+  if (storage) {
+    storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
+  } else {
+    await SecureStore.setItemAsync(AUTH_STORAGE_KEY, JSON.stringify(auth));
+  }
 }
 
 export function hasStoredLogin() {
-  return getStoredAuth() !== null;
+  if (memoryAuth) {
+    return true;
+  }
+  return Boolean(getWebStorage()?.getItem(AUTH_STORAGE_KEY));
 }
 
 export async function validateStoredLogin() {
-  const auth = getStoredAuth();
+  const auth = await getStoredAuth();
   if (!auth) {
     return false;
   }
@@ -60,7 +93,7 @@ export async function validateStoredLogin() {
     });
 
     if (response.status === 401) {
-      clearStoredLogin();
+      await clearStoredLogin();
       return false;
     }
 
@@ -70,9 +103,14 @@ export async function validateStoredLogin() {
   }
 }
 
-export function clearStoredLogin() {
+export async function clearStoredLogin() {
   memoryAuth = null;
-  getStorage()?.removeItem(AUTH_STORAGE_KEY);
+  const storage = getWebStorage();
+  if (storage) {
+    storage.removeItem(AUTH_STORAGE_KEY);
+  } else {
+    await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
+  }
 }
 
 async function postAuth(path: string, body: Record<string, string>): Promise<AuthResponse> {
@@ -100,7 +138,7 @@ async function postAuth(path: string, body: Record<string, string>): Promise<Aut
   }
 
   const auth: AuthResponse = { token: data.token, account: data.account };
-  saveAuth(auth);
+  await saveAuth(auth);
   return auth;
 }
 
@@ -113,18 +151,23 @@ export function register(username: string, email: string, password: string) {
 }
 
 export async function fetchProfile(): Promise<AccountType> {
-  const auth = getStoredAuth();
+  const auth = await getStoredAuth();
   if (!auth) {
     throw new Error('Authentication required');
   }
 
-  const response = await fetch(`${API_URL}/api/profile`, {
-    headers: { Authorization: `Bearer ${auth.token}` },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/api/profile`, {
+      headers: { Authorization: `Bearer ${auth.token}` },
+    });
+  } catch {
+    return auth.account;
+  }
 
   if (!response.ok) {
     if (response.status === 401) {
-      clearStoredLogin();
+      await clearStoredLogin();
     }
     throw new Error(`Profile request failed with status ${response.status}`);
   }
@@ -132,59 +175,189 @@ export async function fetchProfile(): Promise<AccountType> {
   return response.json() as Promise<AccountType>;
 }
 
-async function taskRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  const auth = getStoredAuth();
+async function synchronizeAccount() {
+  const auth = await getStoredAuth();
+  if (!auth) {
+    return;
+  }
+
+  const networkState = await Network.getNetworkStateAsync();
+  if (networkState.isConnected === false) {
+    return;
+  }
+
+  const accountKey = auth.account.email;
+  let needsInitialPull = true;
+
+  while (needsInitialPull) {
+    const pending = await getPendingChanges(accountKey);
+    const sentChanges = {
+      taskUpserts: pending.taskUpserts.slice(0, 100),
+      categoryUpserts: pending.categoryUpserts.slice(0, 100),
+      scheduleUpserts: pending.scheduleUpserts.slice(0, 100),
+    };
+    const response = await fetch(`${API_URL}/api/sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.token}`,
+      },
+      body: JSON.stringify(sentChanges),
+    });
+
+    if (response.status === 401) {
+      await clearStoredLogin();
+      throw new Error('Sesi login sudah berakhir. Silakan login kembali.');
+    }
+
+    const data = await response.json() as {
+      error?: string;
+      tasks?: TaskType[];
+      categories?: string[];
+      schedules?: ScheduleBlockType[];
+    };
+    if (!response.ok) {
+      throw new Error(data.error ?? 'Sinkronisasi data gagal.');
+    }
+    if (!Array.isArray(data.tasks) || !Array.isArray(data.categories) || !Array.isArray(data.schedules)) {
+      throw new Error('Respons sinkronisasi dari server tidak valid.');
+    }
+
+    await reconcileRemoteData(accountKey, data.tasks, data.categories, sentChanges, data.schedules);
+    const remaining = await getPendingChanges(accountKey);
+    needsInitialPull = remaining.taskUpserts.length > 0
+      || remaining.categoryUpserts.length > 0
+      || remaining.scheduleUpserts.length > 0;
+  }
+}
+
+function synchronizeInBackground() {
+  void synchronize().catch((error) => {
+    console.warn('Offline sync is pending:', error);
+  });
+}
+
+export async function synchronize(): Promise<void> {
+  if (syncInFlight) {
+    return syncInFlight;
+  }
+
+  syncInFlight = synchronizeAccount().finally(() => {
+    syncInFlight = null;
+  });
+  return syncInFlight;
+}
+
+export function startOfflineSync() {
+  if (networkSubscription) {
+    return () => undefined;
+  }
+
+  networkSubscription = Network.addNetworkStateListener((state) => {
+    if (state.isConnected) {
+      synchronizeInBackground();
+    }
+  });
+  synchronizeInBackground();
+
+  return () => {
+    networkSubscription?.remove();
+    networkSubscription = null;
+  };
+}
+
+export async function loadCachedTasks() {
+  const auth = await getStoredAuth();
+  return auth ? getCachedTasks(auth.account.email) : [];
+}
+
+export async function fetchTasks() {
+  const tasks = await loadCachedTasks();
+  synchronizeInBackground();
+  return tasks;
+}
+
+export async function loadCachedCategories() {
+  const auth = await getStoredAuth();
+  return auth ? getCachedCategories(auth.account.email) : [];
+}
+
+export async function fetchTaskCategories() {
+  const categories = await loadCachedCategories();
+  synchronizeInBackground();
+  return categories;
+}
+
+export async function loadCachedScheduleBlocks() {
+  const auth = await getStoredAuth();
+  return auth ? getCachedSchedules(auth.account.email) : [];
+}
+
+export async function fetchScheduleBlocks() {
+  const schedules = await loadCachedScheduleBlocks();
+  synchronizeInBackground();
+  return schedules;
+}
+
+export async function saveScheduleBlock(input: {
+  date: string;
+  hour: number;
+  durationHours: number;
+  label: string;
+  color: string;
+}) {
+  const auth = await getStoredAuth();
   if (!auth) {
     throw new Error('Sesi login tidak tersedia. Silakan login kembali.');
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${auth.token}`,
-      ...options?.headers,
-    },
-  });
-  const data = await response.json() as T & { error?: string };
+  const block = await saveLocalSchedule(auth.account.email, input);
+  synchronizeInBackground();
+  return block;
+}
 
-  if (response.status === 401) {
-    clearStoredLogin();
-    throw new Error('Sesi login sudah berakhir. Silakan login kembali.');
+export async function removeScheduleBlock(clientId: string) {
+  const auth = await getStoredAuth();
+  if (!auth) {
+    throw new Error('Sesi login tidak tersedia. Silakan login kembali.');
   }
 
-  if (!response.ok) {
-    throw new Error(data.error ?? 'Task request failed');
+  await deleteLocalSchedule(auth.account.email, clientId);
+  synchronizeInBackground();
+}
+
+export async function createTaskCategory(name: string) {
+  const auth = await getStoredAuth();
+  if (!auth) {
+    throw new Error('Sesi login tidak tersedia. Silakan login kembali.');
+  }
+  if (!name.trim() || name.trim().length > 30 || name.trim().toLowerCase() === 'semua') {
+    throw new Error('Nama kategori tidak valid.');
   }
 
-  return data;
+  const category = await createLocalCategory(auth.account.email, name);
+  synchronizeInBackground();
+  return { category };
 }
 
-export function fetchTasks() {
-  return taskRequest<TaskType[]>('/api/tasks');
+export async function createTask(task: Omit<TaskType, 'id' | 'addedTime' | 'clientId'>) {
+  const auth = await getStoredAuth();
+  if (!auth) {
+    throw new Error('Sesi login tidak tersedia. Silakan login kembali.');
+  }
+
+  const savedTask = await createLocalTask(auth.account.email, task);
+  synchronizeInBackground();
+  return savedTask;
 }
 
-export function fetchTaskCategories() {
-  return taskRequest<string[]>('/api/categories');
-}
+export async function updateTask(id: number, changes: Partial<TaskType>) {
+  const auth = await getStoredAuth();
+  if (!auth) {
+    throw new Error('Sesi login tidak tersedia. Silakan login kembali.');
+  }
 
-export function createTaskCategory(name: string) {
-  return taskRequest<{ category: string }>('/api/categories', {
-    method: 'POST',
-    body: JSON.stringify({ name }),
-  });
-}
-
-export function createTask(task: Omit<TaskType, 'id' | 'addedTime'>) {
-  return taskRequest<TaskType>('/api/tasks', {
-    method: 'POST',
-    body: JSON.stringify(task),
-  });
-}
-
-export function updateTask(id: number, changes: Partial<TaskType>) {
-  return taskRequest<TaskType>(`/api/tasks/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify(changes),
-  });
+  const updatedTask = await updateLocalTask(auth.account.email, id, changes);
+  synchronizeInBackground();
+  return updatedTask;
 }

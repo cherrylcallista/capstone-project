@@ -90,9 +90,14 @@ export default function ProfileScreen() {
     setExpandedFaqId((prev) => (prev === id ? null : id));
   };
 
-  const handleLogout = () => {
-    clearStoredLogin();
-    router.replace('/login');
+  const handleLogout = async () => {
+    try {
+      await clearStoredLogin();
+      router.replace('/login');
+    } catch (error) {
+      console.error('Failed to clear the stored login:', error);
+      setErrorMessage('Sesi tidak dapat dihapus. Silakan coba kembali.');
+    }
   };
 
   // Logika Sensor Email

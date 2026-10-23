@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { Redirect, useSegments } from 'expo-router';
 
-import { hasStoredLogin, validateStoredLogin } from '@/lib/api';
+import { hasStoredLogin, startOfflineSync, validateStoredLogin } from '@/lib/api';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -58,16 +58,22 @@ function RootLayoutNav() {
   useEffect(() => {
     let isCurrent = true;
 
-    validateStoredLogin().then(() => {
-      if (isCurrent) {
-        setIsAuthChecked(true);
-      }
-    });
+    validateStoredLogin()
+      .catch((validationError) => {
+        console.error('Failed to restore the stored login:', validationError);
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsAuthChecked(true);
+        }
+      });
 
     return () => {
       isCurrent = false;
     };
   }, []);
+
+  useEffect(() => startOfflineSync(), []);
 
   const isAuthRoute = segments[0] === '(auth)' &&
     (segments[1] === 'login' || segments[1] === 'register');

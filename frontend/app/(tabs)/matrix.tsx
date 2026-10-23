@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { TaskDetailsModal } from '@/components/TaskDetailsModal';
-import { fetchTasks } from '@/lib/api';
+import { fetchTasks, loadCachedTasks, subscribeToLocalDataChanges } from '@/lib/api';
 import type { TaskType } from '@/lib/types';
 
 const QUADRANTS = [
@@ -24,12 +24,20 @@ export default function MatrixScreen() {
         .then((updatedTasks) => {
           if (isActive) setTasks(updatedTasks);
         })
-        .catch(() => {
-          if (isActive) setTasks([]);
+        .catch((error) => {
+          console.error('Failed to read cached tasks:', error);
         });
+      const unsubscribe = subscribeToLocalDataChanges(() => {
+        loadCachedTasks()
+          .then((updatedTasks) => {
+            if (isActive) setTasks(updatedTasks);
+          })
+          .catch((error) => console.error('Failed to refresh cached tasks:', error));
+      });
 
       return () => {
         isActive = false;
+        unsubscribe();
       };
     }, []),
   );
@@ -38,17 +46,21 @@ export default function MatrixScreen() {
     (task) => task.isTodo && !task.markedAsFinished && task.matrix === quadrantId,
   );
 
-  const renderTasks = (quadrantId: number) => tasksFor(quadrantId).map((task, index) => (
-    <TouchableOpacity
-      key={task.id}
-      style={styles.taskItem}
-      onPress={() => setSelectedTask(task)}
-      accessibilityRole="button"
-      accessibilityLabel={`Buka detail tugas: ${task.detail}`}
-    >
-      <Text style={styles.taskText}>{index + 1}. {task.detail}</Text>
-    </TouchableOpacity>
-  ));
+  const renderTasks = (quadrantId: number, limit?: number) => {
+    const quadrantTasks = tasksFor(quadrantId);
+    const visibleTasks = limit === undefined ? quadrantTasks : quadrantTasks.slice(0, limit);
+    return visibleTasks.map((task, index) => (
+      <TouchableOpacity
+        key={task.clientId ?? task.id}
+        style={styles.taskItem}
+        onPress={() => setSelectedTask(task)}
+        accessibilityRole="button"
+        accessibilityLabel={`Buka detail tugas: ${task.detail}`}
+      >
+        <Text style={styles.taskText}>{index + 1}. {task.detail}</Text>
+      </TouchableOpacity>
+    ));
+  };
 
   const renderFlexQuadrant = (quadrantId: number) => (
     <View key={quadrantId} style={styles.flexSection}>
@@ -93,12 +105,19 @@ export default function MatrixScreen() {
                 </View>
               </View>
               <View style={styles.grid}>
-                <View style={[styles.quadrant, styles.topLeft]}>{renderTasks(1)}</View>
-                <View style={[styles.quadrant, styles.topRight]}>{renderTasks(2)}</View>
-                <View style={[styles.quadrant, styles.bottomLeft]}>{renderTasks(3)}</View>
-                <View style={[styles.quadrant, styles.bottomRight]}>{renderTasks(4)}</View>
+                <View style={[styles.quadrant, styles.topLeft]}>{renderTasks(1, 9)}</View>
+                <View style={[styles.quadrant, styles.topRight]}>{renderTasks(2, 9)}</View>
+                <View style={[styles.quadrant, styles.bottomLeft]}>{renderTasks(3, 9)}</View>
+                <View style={[styles.quadrant, styles.bottomRight]}>{renderTasks(4, 9)}</View>
               </View>
             </View>
+            <TouchableOpacity
+              style={styles.viewAll}
+              onPress={() => setViewMode('flex')}
+              accessibilityRole="button"
+            >
+              <Text style={styles.viewAllText}>Lihat semua</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.flexList}>
@@ -137,7 +156,7 @@ const styles = StyleSheet.create({
   rowHeadingSlot: { height: 205, alignItems: 'center', justifyContent: 'center' },
   rowHeadingText: { width: 90, textAlign: 'center', fontSize: 12, color: '#737373', transform: [{ rotate: '-90deg' }] },
   grid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', borderRadius: 12, overflow: 'hidden', backgroundColor: '#F3F3F3' },
-  quadrant: { width: '50%', height: 205, padding: 12 },
+  quadrant: { width: '50%', minHeight: 205, padding: 12 },
   topLeft: { borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#C9C9C9' },
   topRight: { borderBottomWidth: 1, borderColor: '#C9C9C9' },
   bottomLeft: { borderRightWidth: 1, borderColor: '#C9C9C9' },
@@ -145,6 +164,8 @@ const styles = StyleSheet.create({
   quadrantTitle: { marginBottom: 8, fontSize: 13, fontWeight: '500', color: '#737373' },
   taskItem: { alignSelf: 'stretch', borderRadius: 6 },
   taskText: { marginBottom: 4, fontSize: 12, lineHeight: 16, color: '#525252' },
+  viewAll: { alignSelf: 'flex-start', paddingTop: 8, paddingBottom: 4 },
+  viewAllText: { fontSize: 12, fontWeight: '600', color: '#1D2B53', textDecorationLine: 'underline' },
   flexList: { gap: 12 },
   flexSection: { gap: 0 },
   flexCard: { minHeight: 192, padding: 12, borderRadius: 12, backgroundColor: '#F3F3F3' },

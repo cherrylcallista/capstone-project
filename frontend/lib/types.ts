@@ -20,6 +20,7 @@ export type TimerType = {
 
 export type TaskType = {
 	id: number;
+	clientId?: string;
 	detail: string;
 	addedTime: string;
 	dueDate: string | null;
@@ -30,3 +31,14 @@ export type TaskType = {
 	matrix?: number | null;
 	isTodo: boolean;
 }
+
+export type ScheduleBlockType = {
+	id: number;
+	clientId: string;
+	date: string;
+	hour: number;
+	durationHours: number;
+	label: string;
+	color: string;
+	deleted?: boolean;
+};

@@ -12,10 +12,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { TaskForm } from '@/components/TaskForm';
 import { TaskDetailsModal } from '@/components/TaskDetailsModal';
-import { fetchTaskCategories, fetchTasks, updateTask } from '@/lib/api';
+import {
+  fetchTaskCategories,
+  fetchTasks,
+  loadCachedCategories,
+  loadCachedTasks,
+  subscribeToLocalDataChanges,
+  updateTask,
+} from '@/lib/api';
 import type { TaskType } from '@/lib/types';
 
 type TaskSection = 'sebelumnya' | 'hari_ini' | 'masa_mendatang' | 'selesai';
+type TaskSortOrder = 'terbaru' | 'terlama' | 'a-z' | 'z-a';
+
+const SORT_OPTIONS: { value: TaskSortOrder; label: string }[] = [
+  { value: 'terbaru', label: 'Terbaru' },
+  { value: 'terlama', label: 'Terlama' },
+  { value: 'a-z', label: 'A–Z' },
+  { value: 'z-a', label: 'Z–A' },
+];
 
 function getTaskSection(task: TaskType): TaskSection {
   if (task.markedAsFinished) return 'selesai';
@@ -24,11 +39,21 @@ function getTaskSection(task: TaskType): TaskSection {
   return task.dueDate < today ? 'sebelumnya' : task.dueDate === today ? 'hari_ini' : 'masa_mendatang';
 }
 
+function upsertTask(tasks: TaskType[], updatedTask: TaskType) {
+  const existingIndex = tasks.findIndex((task) => (
+    (updatedTask.clientId && task.clientId === updatedTask.clientId)
+    || task.id === updatedTask.id
+  ));
+  if (existingIndex < 0) return [...tasks, updatedTask];
+  return tasks.map((task, index) => index === existingIndex ? updatedTask : task);
+}
+
 export default function TodoScreen() {
   const [tasks, setTasks] = useState<TaskType[]>([]);
   const [savedCategories, setSavedCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState<TaskSortOrder>('terbaru');
   const [formVisible, setFormVisible] = useState(false);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [selectedTask, setSelectedTask] = useState<TaskType | null>(null);
@@ -40,21 +65,36 @@ export default function TodoScreen() {
         .then((updatedTasks) => {
           if (isActive) setTasks(updatedTasks);
         })
-        .catch(() => {
-          if (isActive) setTasks([]);
+        .catch((error) => {
+          console.error('Failed to read cached tasks:', error);
         })
         .finally(() => {
           if (isActive) setIsLoadingTasks(false);
         });
+      const unsubscribe = subscribeToLocalDataChanges(() => {
+        loadCachedTasks()
+          .then((updatedTasks) => {
+            if (isActive) setTasks(updatedTasks);
+          })
+          .catch((error) => console.error('Failed to refresh cached tasks:', error));
+        loadCachedCategories()
+          .then((updatedCategories) => {
+            if (isActive) setSavedCategories(updatedCategories);
+          })
+          .catch((error) => console.error('Failed to refresh cached categories:', error));
+      });
 
       return () => {
         isActive = false;
+        unsubscribe();
       };
     }, []),
   );
 
   useEffect(() => {
-    fetchTaskCategories().then(setSavedCategories).catch(() => setSavedCategories([]));
+    fetchTaskCategories()
+      .then(setSavedCategories)
+      .catch((error) => console.error('Failed to read cached categories:', error));
   }, []);
 
   const toggleTask = async (task: TaskType) => {
@@ -71,6 +111,17 @@ export default function TodoScreen() {
     const matchesSearch = task.detail.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'Semua' || task.category === selectedCategory;
     return task.isTodo && matchesSearch && matchesCategory;
+  }).sort((left, right) => {
+    if (sortOrder === 'a-z' || sortOrder === 'z-a') {
+      const comparison = left.detail.localeCompare(right.detail, 'id', { sensitivity: 'base' });
+      return sortOrder === 'a-z' ? comparison : -comparison;
+    }
+
+    const leftAddedTime = Date.parse(left.addedTime);
+    const rightAddedTime = Date.parse(right.addedTime);
+    const leftTime = Number.isNaN(leftAddedTime) ? 0 : leftAddedTime;
+    const rightTime = Number.isNaN(rightAddedTime) ? 0 : rightAddedTime;
+    return sortOrder === 'terbaru' ? rightTime - leftTime : leftTime - rightTime;
   });
   const categories = [
     'Semua',
@@ -89,7 +140,7 @@ export default function TodoScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{title}</Text>
         {sectionTasks.map((task) => (
-          <View key={task.id} style={[styles.taskCard, task.markedAsFinished && styles.completedCard]}>
+          <View key={task.clientId ?? task.id} style={[styles.taskCard, task.markedAsFinished && styles.completedCard]}>
             <TouchableOpacity style={styles.checkbox} onPress={() => toggleTask(task)}>
               <Ionicons
                 name={task.markedAsFinished ? 'checkbox' : 'square-outline'}
@@ -132,6 +183,29 @@ export default function TodoScreen() {
             />
             <Ionicons name="search-outline" size={18} color="#64748B" />
           </View>
+        </View>
+
+        <View style={styles.sortRow}>
+          <Text style={styles.sortLabel}>Urutkan:</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.sortOptions}
+          >
+            {SORT_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[styles.sortOption, sortOrder === option.value && styles.sortOptionSelected]}
+                onPress={() => setSortOrder(option.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: sortOrder === option.value }}
+              >
+                <Text style={[styles.sortOptionLabel, sortOrder === option.value && styles.sortOptionLabelSelected]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         <ScrollView
@@ -186,7 +260,7 @@ export default function TodoScreen() {
         visible={formVisible}
         categories={categories.filter((category) => category !== 'Semua')}
         onClose={() => setFormVisible(false)}
-        onSaved={(task) => setTasks((current) => [...current, task])}
+        onSaved={(task) => setTasks((current) => upsertTask(current, task))}
         onCategoryCreated={(category) => setSavedCategories((current) => (
           current.includes(category) ? current : [...current, category]
         ))}
@@ -208,6 +282,13 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: '900', color: '#1D2B53' },
   searchBox: { flexDirection: 'row', alignItems: 'center', width: 150, height: 38, paddingHorizontal: 12, borderWidth: 1.5, borderColor: '#CBD5E1', borderRadius: 24 },
   searchInput: { flex: 1, padding: 0, fontSize: 13, color: '#0F172A' },
+  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  sortLabel: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  sortOptions: { flexDirection: 'row', gap: 8, paddingRight: 8 },
+  sortOption: { paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 16, backgroundColor: '#FFFFFF' },
+  sortOptionSelected: { borderColor: '#1D2B53', backgroundColor: '#1D2B53' },
+  sortOptionLabel: { fontSize: 12, fontWeight: '700', color: '#1D2B53' },
+  sortOptionLabelSelected: { color: '#FFFFFF' },
   categoryScroller: { height: 44, flexGrow: 0, marginBottom: 24 },
   categories: { gap: 10, paddingVertical: 2, alignItems: 'center' },
   category: { height: 38, minWidth: 74, maxWidth: 180, flexShrink: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, borderRadius: 20, borderWidth: 1.5, borderColor: '#CBD5E1', backgroundColor: '#FFFFFF' },
