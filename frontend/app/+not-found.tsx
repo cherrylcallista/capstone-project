@@ -2,8 +2,11 @@ import { Link, Stack } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
+import { useAppTheme, useThemeStyles } from '@/theme/ThemeProvider';
 
 export default function NotFoundScreen() {
+  const { colors } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   return (
     <>
       <Stack.Screen options={{ title: 'Oops!' }} />
@@ -18,7 +21,7 @@ export default function NotFoundScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: import('@/theme/ThemeProvider').AppThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
@@ -35,6 +38,6 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 14,
-    color: '#2e78b7',
+    color: colors.primary,
   },
 });

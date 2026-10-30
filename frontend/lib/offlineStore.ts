@@ -1,127 +1,23 @@
 import type { ScheduleBlockType, TaskType } from './types';
-import { readPersistedCache, writePersistedCache } from './offlinePersistence';
+import {
+  createClientId,
+  deduplicateTasks,
+  updateCache,
+} from './offlineCacheCore';
+export { reconcileRemoteData } from './offlineReconciliation';
 
-export type PendingChanges = {
-  taskUpserts: TaskType[];
-  categoryUpserts: string[];
-  scheduleUpserts: ScheduleBlockType[];
-};
-
-type AccountCache = {
-  tasks: TaskType[];
-  categories: string[];
-  pendingTasks: TaskType[];
-  pendingCategories: string[];
-  schedules: ScheduleBlockType[];
-  pendingSchedules: ScheduleBlockType[];
-};
-
-type CacheListener = (accountKey: string) => void;
-
-const listeners = new Set<CacheListener>();
-const accountLocks = new Map<string, Promise<void>>();
-
-function emptyCache(): AccountCache {
-  return {
-    tasks: [],
-    categories: [],
-    pendingTasks: [],
-    pendingCategories: [],
-    schedules: [],
-    pendingSchedules: [],
-  };
-}
-
-function normalizeAccountKey(accountKey: string) {
-  return accountKey.trim().toLowerCase();
-}
-
-function createClientId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-}
+export {
+  getCachedCategories,
+  getCachedSchedules,
+  getCachedTasks,
+  getPendingChanges,
+  subscribeToLocalDataChanges,
+} from './offlineCacheCore';
+export type { PendingChanges } from './offlineCacheCore';
 
 function formatScheduleTime(hour: number) {
   const minutes = Math.round(hour * 60);
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-}
-
-function taskIdentity(task: TaskType) {
-  return task.clientId ? `client:${task.clientId}` : `id:${task.id}`;
-}
-
-function deduplicateTasks(tasks: TaskType[]) {
-  const tasksByIdentity = new Map<string, TaskType>();
-  tasks.forEach((task) => tasksByIdentity.set(taskIdentity(task), task));
-  return [...tasksByIdentity.values()];
-}
-
-function notify(accountKey: string) {
-  const normalizedKey = normalizeAccountKey(accountKey);
-  listeners.forEach((listener) => listener(normalizedKey));
-}
-
-export function subscribeToLocalDataChanges(listener: CacheListener) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-async function readCache(accountKey: string): Promise<AccountCache> {
-  const normalizedKey = normalizeAccountKey(accountKey);
-  const stored = await readPersistedCache(normalizedKey);
-  if (!stored) return emptyCache();
-
-  const cache = JSON.parse(stored) as Partial<AccountCache>;
-  return {
-    ...emptyCache(),
-    ...cache,
-    tasks: deduplicateTasks(cache.tasks ?? []),
-    pendingTasks: deduplicateTasks(cache.pendingTasks ?? []),
-    schedules: cache.schedules ?? [],
-    pendingSchedules: cache.pendingSchedules ?? [],
-  };
-}
-
-async function writeCache(accountKey: string, cache: AccountCache) {
-  const normalizedKey = normalizeAccountKey(accountKey);
-  await writePersistedCache(normalizedKey, JSON.stringify(cache));
-}
-
-async function updateCache<T>(
-  accountKey: string,
-  update: (cache: AccountCache) => { cache: AccountCache; result: T },
-): Promise<T> {
-  const normalizedKey = normalizeAccountKey(accountKey);
-  const previous = accountLocks.get(normalizedKey) ?? Promise.resolve();
-  const operation = previous.then(async () => {
-    const current = await readCache(normalizedKey);
-    const { cache, result } = update(current);
-    await writeCache(normalizedKey, cache);
-    notify(normalizedKey);
-    return result;
-  });
-  accountLocks.set(normalizedKey, operation.then(() => undefined, () => undefined));
-  return operation;
-}
-
-export async function getCachedTasks(accountKey: string) {
-  return deduplicateTasks((await readCache(accountKey)).tasks);
-}
-
-export async function getCachedCategories(accountKey: string) {
-  return (await readCache(accountKey)).categories;
-}
-
-export async function getPendingChanges(accountKey: string): Promise<PendingChanges> {
-  const cache = await readCache(accountKey);
-  return {
-    taskUpserts: cache.pendingTasks,
-    categoryUpserts: cache.pendingCategories,
-    scheduleUpserts: cache.pendingSchedules,
-  };
-}
-
-export async function getCachedSchedules(accountKey: string) {
-  return (await readCache(accountKey)).schedules.filter((block) => !block.deleted);
 }
 
 export async function saveLocalSchedule(
@@ -181,16 +77,6 @@ export async function deleteLocalSchedule(accountKey: string, clientId: string) 
       : [...cache.pendingSchedules, deleted];
     return { cache: { ...cache, schedules, pendingSchedules }, result: undefined };
   });
-}
-
-function equalSchedule(left: ScheduleBlockType, right: ScheduleBlockType) {
-  return left.clientId === right.clientId
-    && left.date === right.date
-    && left.hour === right.hour
-    && left.durationHours === right.durationHours
-    && left.label === right.label
-    && left.color === right.color
-    && Boolean(left.deleted) === Boolean(right.deleted);
 }
 
 export async function createLocalTask(
@@ -259,107 +145,6 @@ export async function createLocalCategory(accountKey: string, name: string) {
         pendingCategories: [...cache.pendingCategories, category],
       },
       result: category,
-    };
-  });
-}
-
-function equalExceptServerId(left: TaskType, right: TaskType) {
-  const canonicalize = (task: TaskType) => ({
-    clientId: task.clientId,
-    detail: task.detail,
-    addedTime: task.addedTime,
-    dueDate: task.dueDate,
-    markedAsFinished: task.markedAsFinished,
-    repeatTask: task.repeatTask,
-    repeatEvery: task.repeatEvery,
-    category: task.category,
-    matrix: task.matrix ?? null,
-    isTodo: task.isTodo,
-  });
-  return JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right));
-}
-
-export async function reconcileRemoteData(
-  accountKey: string,
-  remoteTasks: TaskType[],
-  remoteCategories: string[],
-  sentChanges: PendingChanges,
-  remoteSchedules: ScheduleBlockType[] = [],
-) {
-  return updateCache(accountKey, (cache) => {
-    const localById = new Map(cache.tasks.map((task) => [task.id, task]));
-    const tasksFromServer = remoteTasks.map((task) => ({
-      ...task,
-      clientId: task.clientId ?? localById.get(task.id)?.clientId ?? createClientId(),
-    }));
-    const remoteByClientId = new Map(
-      tasksFromServer.filter((task) => task.clientId).map((task) => [task.clientId as string, task]),
-    );
-    const sentByClientId = new Map(
-      sentChanges.taskUpserts.map((task) => [task.clientId, task]),
-    );
-
-    const pendingTasks = cache.pendingTasks.flatMap((task) => {
-      const remoteTask = task.clientId ? remoteByClientId.get(task.clientId) : undefined;
-      const reconciledTask = remoteTask ? { ...task, id: remoteTask.id } : task;
-      const sentTask = task.clientId ? sentByClientId.get(task.clientId) : undefined;
-      return sentTask && equalExceptServerId(reconciledTask, sentTask) ? [] : [reconciledTask];
-    });
-
-    const tasksById = new Map<number, TaskType>(tasksFromServer.map((task) => [task.id, task]));
-    for (const task of pendingTasks) {
-      const matchingRemoteTask = task.clientId ? remoteByClientId.get(task.clientId) : undefined;
-      tasksById.set(matchingRemoteTask?.id ?? task.id, task);
-    }
-    const tasks = deduplicateTasks([...tasksById.values()]);
-
-    const sentCategories = new Set(sentChanges.categoryUpserts.map((item) => item.toLowerCase()));
-    const pendingCategories = cache.pendingCategories.filter(
-      (item) => !sentCategories.has(item.toLowerCase()),
-    );
-    const categories = [...new Set(
-      [...remoteCategories, ...cache.categories, ...pendingCategories]
-        .map((item) => item.trim())
-        .filter(Boolean),
-    )].filter((item, index, items) => (
-      items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index
-    ));
-
-    const localSchedulesById = new Map(cache.schedules.map((block) => [block.id, block]));
-    const schedulesFromServer = remoteSchedules.map((block) => ({
-      ...block,
-      clientId: block.clientId ?? localSchedulesById.get(block.id)?.clientId ?? createClientId(),
-    }));
-    const remoteSchedulesByClientId = new Map(
-      schedulesFromServer.map((block) => [block.clientId, block]),
-    );
-    const sentSchedulesByClientId = new Map(
-      sentChanges.scheduleUpserts.map((block) => [block.clientId, block]),
-    );
-    const pendingSchedules = cache.pendingSchedules.flatMap((block) => {
-      const remoteBlock = remoteSchedulesByClientId.get(block.clientId);
-      const reconciledBlock = remoteBlock ? { ...block, id: remoteBlock.id } : block;
-      const sentBlock = sentSchedulesByClientId.get(block.clientId);
-      return sentBlock && equalSchedule(reconciledBlock, sentBlock)
-        ? []
-        : [reconciledBlock];
-    });
-    const schedulesById = new Map(schedulesFromServer.map((block) => [block.id, block]));
-    for (const block of pendingSchedules) {
-      const remoteBlock = remoteSchedulesByClientId.get(block.clientId);
-      schedulesById.set(remoteBlock?.id ?? block.id, block);
-    }
-
-    return {
-      cache: {
-        tasks,
-        categories,
-        pendingTasks,
-        pendingCategories,
-        schedules: [...schedulesById.values()],
-        pendingSchedules,
-      },
-      result: undefined,
     };
   });
 }

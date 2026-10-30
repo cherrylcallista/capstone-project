@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { TaskDetailsModal } from '@/components/TaskDetailsModal';
+import { AppText as Text } from '@/components/AppTypography';
 import { fetchTasks, loadCachedTasks, subscribeToLocalDataChanges } from '@/lib/api';
 import type { TaskType } from '@/lib/types';
+import { useAppTheme, useThemeStyles } from '@/theme/ThemeProvider';
 
 const QUADRANTS = [
   { id: 1, title: 'Penting dan Mendesak' },
@@ -16,6 +18,8 @@ export default function MatrixScreen() {
   const [tasks, setTasks] = useState<TaskType[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'flex'>('grid');
   const [selectedTask, setSelectedTask] = useState<TaskType | null>(null);
+  const { colors } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
 
   useFocusEffect(
     useCallback(() => {
@@ -138,35 +142,35 @@ export default function MatrixScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FFFFFF', width: '90%', alignSelf: 'center' },
+const createStyles = (colors: import('@/theme/ThemeProvider').AppThemeColors) => StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: colors.background, width: '90%', alignSelf: 'center' },
   content: { paddingTop: 16, paddingBottom: 110 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18 },
-  title: { fontSize: 14, fontWeight: '600', color: '#111827' },
-  segmented: { width: 168, flexDirection: 'row', padding: 3, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, backgroundColor: '#F3F4F6' },
+  title: { fontSize: 14, fontWeight: '600', color: colors.text },
+  segmented: { width: 168, flexDirection: 'row', padding: 3, borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: colors.surfaceSecondary },
   segment: { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 6 },
-  segmentActive: { backgroundColor: '#1D2B53' },
-  segmentText: { fontSize: 13, fontWeight: '500', color: '#4B5563' },
-  segmentTextActive: { color: '#FFFFFF' },
+  segmentActive: { backgroundColor: colors.primary },
+  segmentText: { fontSize: 13, fontWeight: '500', color: colors.textSecondary },
+  segmentTextActive: { color: colors.onPrimary },
   columnHeadings: { flexDirection: 'row', marginBottom: 8 },
   axisSpacer: { width: 32 },
-  axisHeading: { flex: 1, textAlign: 'center', fontSize: 12, color: '#737373' },
+  axisHeading: { flex: 1, textAlign: 'center', fontSize: 12, color: colors.textMuted },
   matrixLayout: { flexDirection: 'row' },
   rowHeadings: { width: 32 },
   rowHeadingSlot: { height: 205, alignItems: 'center', justifyContent: 'center' },
-  rowHeadingText: { width: 90, textAlign: 'center', fontSize: 12, color: '#737373', transform: [{ rotate: '-90deg' }] },
-  grid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', borderRadius: 12, overflow: 'hidden', backgroundColor: '#F3F3F3' },
+  rowHeadingText: { width: 90, textAlign: 'center', fontSize: 12, color: colors.textMuted, transform: [{ rotate: '-90deg' }] },
+  grid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', borderRadius: 12, overflow: 'hidden', backgroundColor: colors.surfaceSecondary },
   quadrant: { width: '50%', minHeight: 205, padding: 12 },
-  topLeft: { borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#C9C9C9' },
-  topRight: { borderBottomWidth: 1, borderColor: '#C9C9C9' },
-  bottomLeft: { borderRightWidth: 1, borderColor: '#C9C9C9' },
+  topLeft: { borderRightWidth: 1, borderBottomWidth: 1, borderColor: colors.border },
+  topRight: { borderBottomWidth: 1, borderColor: colors.border },
+  bottomLeft: { borderRightWidth: 1, borderColor: colors.border },
   bottomRight: {},
-  quadrantTitle: { marginBottom: 8, fontSize: 13, fontWeight: '500', color: '#737373' },
+  quadrantTitle: { marginBottom: 8, fontSize: 13, fontWeight: '500', color: colors.textMuted },
   taskItem: { alignSelf: 'stretch', borderRadius: 6 },
-  taskText: { marginBottom: 4, fontSize: 12, lineHeight: 16, color: '#525252' },
+  taskText: { marginBottom: 4, fontSize: 12, lineHeight: 16, color: colors.textSecondary },
   viewAll: { alignSelf: 'flex-start', paddingTop: 8, paddingBottom: 4 },
-  viewAllText: { fontSize: 12, fontWeight: '600', color: '#1D2B53', textDecorationLine: 'underline' },
+  viewAllText: { fontSize: 12, fontWeight: '600', color: colors.primary, textDecorationLine: 'underline' },
   flexList: { gap: 12 },
   flexSection: { gap: 0 },
-  flexCard: { minHeight: 192, padding: 12, borderRadius: 12, backgroundColor: '#F3F3F3' },
+  flexCard: { minHeight: 192, padding: 12, borderRadius: 12, backgroundColor: colors.surfaceSecondary },
 });

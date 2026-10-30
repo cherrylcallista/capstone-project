@@ -2,22 +2,41 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
+import { useAppTheme, useThemeStyles } from '@/theme/ThemeProvider';
+
+const tabItemStyles = StyleSheet.create({
+  tabItemContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activePill: {
+    paddingHorizontal: 16,
+    borderRadius: 9999,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});
 
 // Komponen helper untuk item menu dan kapsul pill aktif
 function TabItem({
   focused,
   children,
   pillStyle,
+  activeBackground,
+  inactiveColor,
+  activeColor,
 }: {
   focused: boolean;
   children: (iconColor: string) => React.ReactNode;
   pillStyle: object;
+  activeBackground: string;
+  inactiveColor: string;
+  activeColor: string;
 }) {
-  // Warna ikon saat aktif adalah warna background navbar (#1D2B53), saat tidak aktif putih bersih
-  const iconColor = focused ? '#1D2B53' : '#FFFFFF';
+  const iconColor = focused ? activeColor : inactiveColor;
 
   return (
-    <View style={[styles.tabItemContainer, focused && [styles.activePill, pillStyle]]}>
+    <View style={[tabItemStyles.tabItemContainer, focused && [tabItemStyles.activePill, { backgroundColor: activeBackground }, pillStyle]]}>
       {children(iconColor)}
     </View>
   );
@@ -25,11 +44,14 @@ function TabItem({
 
 export default function TabLayout() {
   const { width, height } = useWindowDimensions();
+  const { colors } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
 
   // Perhitungan responsif dinamis
   const navbarHeight = Math.min(Math.max(height * 0.08, 60), 75);
   const iconSize = Math.min(Math.max(width * 0.07, 24), 32);
-  const pillWidth = (width * 0.9) / 5 - 8; // Membagi 5 ruang tab secara rata & presisi
+  const contentWidth = Math.min(width, 480);
+  const pillWidth = (contentWidth * 0.9) / 5 - 8;
   const pillHeight = navbarHeight * 0.72;
 
   const dynamicPillStyle = {
@@ -43,6 +65,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
+        sceneStyle: { width: '100%', maxWidth: 480, alignSelf: 'center' },
         tabBarStyle: [styles.floatingNavbar, { height: navbarHeight }],
         tabBarItemStyle: styles.tabBarItem,
       }}
@@ -52,7 +75,7 @@ export default function TabLayout() {
         name="todo"
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabItem focused={focused} pillStyle={dynamicPillStyle}>
+            <TabItem focused={focused} pillStyle={dynamicPillStyle} activeBackground={colors.surface} inactiveColor={colors.onPrimary} activeColor={colors.primary}>
               {(color) => (
                 <MaterialCommunityIcons
                   name="clipboard-text-outline"
@@ -70,7 +93,7 @@ export default function TabLayout() {
         name="time"
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabItem focused={focused} pillStyle={dynamicPillStyle}>
+            <TabItem focused={focused} pillStyle={dynamicPillStyle} activeBackground={colors.surface} inactiveColor={colors.onPrimary} activeColor={colors.primary}>
               {(color) => (
                 <MaterialCommunityIcons
                   name="timer-outline"
@@ -88,7 +111,7 @@ export default function TabLayout() {
         name="calendar"
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabItem focused={focused} pillStyle={dynamicPillStyle}>
+            <TabItem focused={focused} pillStyle={dynamicPillStyle} activeBackground={colors.surface} inactiveColor={colors.onPrimary} activeColor={colors.primary}>
               {(color) => (
                 <MaterialCommunityIcons
                   name="calendar-month"
@@ -106,7 +129,7 @@ export default function TabLayout() {
         name="matrix"
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabItem focused={focused} pillStyle={dynamicPillStyle}>
+            <TabItem focused={focused} pillStyle={dynamicPillStyle} activeBackground={colors.surface} inactiveColor={colors.onPrimary} activeColor={colors.primary}>
               {(color) => (
                 <MaterialCommunityIcons
                   name="view-grid"
@@ -124,7 +147,7 @@ export default function TabLayout() {
         name="profile"
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabItem focused={focused} pillStyle={dynamicPillStyle}>
+            <TabItem focused={focused} pillStyle={dynamicPillStyle} activeBackground={colors.surface} inactiveColor={colors.onPrimary} activeColor={colors.primary}>
               {(color) => (
                 <FontAwesome5
                   name="user-alt"
@@ -141,15 +164,16 @@ export default function TabLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: import('@/theme/ThemeProvider').AppThemeColors) => StyleSheet.create({
   floatingNavbar: {
     bottom: "3%",
     width: '90%',
-    backgroundColor: '#1D2B53',
+    maxWidth: 440,
+    backgroundColor: colors.primary,
     borderRadius: 9999,
     borderTopWidth: 0,
     borderWidth: 1.5,
-    borderColor: '#0F172A',
+    borderColor: colors.border,
     paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
@@ -157,7 +181,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
 
     // Shadow iOS
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
@@ -171,17 +195,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 0,
     margin: 0,
-  },
-  tabItemContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // Kapsul pill aktif
-  activePill: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    borderRadius: 9999,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

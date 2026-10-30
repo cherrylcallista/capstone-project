@@ -4,17 +4,16 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Calendar, DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
+import { AppText as Text, AppTextInput as TextInput } from '@/components/AppTypography';
+import { DatePickerModal } from '@/components/DatePickerModal';
+import { FormDropdown } from '@/components/FormDropdown';
 import { updateTask } from '@/lib/api';
 import type { TaskType } from '@/lib/types';
-
-type SelectOption = { value: string; label: string };
+import { useAppTheme, useThemeStyles } from '@/theme/ThemeProvider';
 
 const MATRIX_OPTIONS: SelectOption[] = [
   { value: '', label: 'Tidak dimasukkan ke matriks' },
@@ -30,6 +29,8 @@ const REPEAT_OPTIONS: SelectOption[] = [
   { value: 'yearly', label: 'Tahunan' },
 ];
 
+type SelectOption = { value: string; label: string };
+
 type TaskDetailsModalProps = {
   task: TaskType | null;
   categories: string[];
@@ -37,54 +38,9 @@ type TaskDetailsModalProps = {
   onSaved: (task: TaskType) => void;
 };
 
-function DetailDropdown({
-  label,
-  value,
-  placeholder,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  placeholder: string;
-  options: SelectOption[];
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selectedOption = options.find((option) => option.value === value);
-
-  return (
-    <View style={styles.detailField}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <TouchableOpacity style={styles.detailSelect} onPress={() => setOpen((current) => !current)}>
-        <Text style={selectedOption ? styles.detailSelectText : styles.detailPlaceholder}>
-          {selectedOption?.label ?? placeholder}
-        </Text>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
-      </TouchableOpacity>
-      {open && (
-        <View style={styles.detailOptions}>
-          {options.map((option) => (
-            <TouchableOpacity
-              key={option.value || 'none'}
-              style={[styles.detailOption, option.value === value && styles.detailOptionActive]}
-              onPress={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-              <Text style={[styles.detailOptionText, option.value === value && styles.detailOptionTextActive]}>
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
 export function TaskDetailsModal({ task, categories, onClose, onSaved }: TaskDetailsModalProps) {
+  const { colors } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const [detail, setDetail] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [category, setCategory] = useState('');
@@ -150,7 +106,7 @@ export function TaskDetailsModal({ task, categories, onClose, onSaved }: TaskDet
             <View style={styles.detailHeader}>
               <Text style={styles.detailTitle}>Detail tugas</Text>
               <TouchableOpacity onPress={dismiss} accessibilityLabel="Tutup detail tugas">
-                <Ionicons name="close" size={24} color="#64748B" />
+                <Ionicons name="close" size={24} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={styles.detailContent} keyboardShouldPersistTaps="handled">
@@ -172,11 +128,11 @@ export function TaskDetailsModal({ task, categories, onClose, onSaved }: TaskDet
                     <Text style={dueDate ? styles.detailSelectText : styles.detailPlaceholder}>
                       {dueDate || 'Tanpa tenggat'}
                     </Text>
-                    <Ionicons name="calendar-outline" size={18} color="#64748B" />
+                    <Ionicons name="calendar-outline" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                   {dueDate !== '' && (
                     <TouchableOpacity style={styles.clearDateButton} onPress={() => setDueDate('')}>
-                      <Ionicons name="close-circle-outline" size={20} color="#64748B" />
+                      <Ionicons name="close-circle-outline" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -187,12 +143,12 @@ export function TaskDetailsModal({ task, categories, onClose, onSaved }: TaskDet
                 <Switch
                   value={isFinished}
                   onValueChange={setIsFinished}
-                  trackColor={{ false: '#CBD5E1', true: '#AAB7D1' }}
-                  thumbColor={isFinished ? '#1D2B53' : '#FFFFFF'}
+                  trackColor={{ false: colors.border, true: colors.primarySurface }}
+                  thumbColor={isFinished ? colors.primary : colors.surface}
                 />
               </View>
 
-              <DetailDropdown
+              <FormDropdown
                 label="Kategori"
                 value={category}
                 placeholder="Tanpa kategori"
@@ -202,14 +158,14 @@ export function TaskDetailsModal({ task, categories, onClose, onSaved }: TaskDet
                 ]}
                 onChange={setCategory}
               />
-              <DetailDropdown
+              <FormDropdown
                 label="Kategori matriks"
                 value={matrix}
                 placeholder="Tidak dimasukkan ke matriks"
                 options={MATRIX_OPTIONS}
                 onChange={setMatrix}
               />
-              <DetailDropdown
+              <FormDropdown
                 label="Pengulangan tugas"
                 value={repeat}
                 placeholder="Tidak berulang"
@@ -236,59 +192,41 @@ export function TaskDetailsModal({ task, categories, onClose, onSaved }: TaskDet
         </View>
       </Modal>
 
-      <Modal visible={showDatePicker && task !== null} transparent animationType="fade" onRequestClose={() => setShowDatePicker(false)}>
-        <View style={styles.detailDateBackdrop}>
-          <View style={styles.detailDateModal}>
-            <Calendar
-              current={dueDate || undefined}
-              onDayPress={(day: DateData) => {
-                setDueDate(day.dateString);
-                setShowDatePicker(false);
-              }}
-              markedDates={dueDate ? { [dueDate]: { selected: true, selectedColor: '#1D2B53' } } : undefined}
-              enableSwipeMonths
-              theme={{ arrowColor: '#1D2B53', todayTextColor: '#1D2B53' }}
-            />
-            <TouchableOpacity style={styles.datePickerClose} onPress={() => setShowDatePicker(false)}>
-              <Text style={styles.detailCancelText}>Tutup</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <DatePickerModal
+        visible={showDatePicker && task !== null}
+        value={dueDate}
+        onChange={(date) => {
+          setDueDate(date);
+          setShowDatePicker(false);
+        }}
+        onClose={() => setShowDatePicker(false)}
+      />
     </>
   );
 }
 
-const styles = StyleSheet.create({
-  detailBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15, 23, 42, 0.4)' },
+const createStyles = (colors: import('@/theme/ThemeProvider').AppThemeColors) => StyleSheet.create({
+  detailBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: colors.overlay },
   detailDismiss: { flex: 1 },
-  detailSheet: { maxHeight: '88%', borderTopLeftRadius: 20, borderTopRightRadius: 20, backgroundColor: '#FFFFFF' },
+  detailSheet: { maxHeight: '88%', borderTopLeftRadius: 20, borderTopRightRadius: 20, backgroundColor: colors.surface },
   detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 8 },
-  detailTitle: { fontSize: 20, fontWeight: '800', color: '#1D2B53' },
+  detailTitle: { fontSize: 20, fontWeight: '800', color: colors.primary },
   detailContent: { gap: 14, padding: 20, paddingTop: 8, paddingBottom: 28 },
   detailField: { gap: 6 },
-  detailLabel: { fontSize: 14, fontWeight: '700', color: '#334155' },
-  detailInput: { minHeight: 46, paddingHorizontal: 12, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, backgroundColor: '#F8FAFC', color: '#0F172A' },
+  detailLabel: { fontSize: 14, fontWeight: '700', color: colors.textSecondary },
+  detailInput: { minHeight: 46, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.inputBackground, color: colors.text },
   detailMultiline: { minHeight: 74, paddingTop: 12, textAlignVertical: 'top' },
   dueDateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   clearDateButton: { width: 36, height: 46, alignItems: 'center', justifyContent: 'center' },
-  detailSelect: { minHeight: 46, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, backgroundColor: '#F8FAFC' },
-  detailSelectText: { flex: 1, color: '#0F172A', fontSize: 14 },
-  detailPlaceholder: { flex: 1, color: '#64748B', fontSize: 14 },
-  detailOptions: { overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, backgroundColor: '#FFFFFF' },
-  detailOption: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 12 },
-  detailOptionActive: { backgroundColor: '#1D2B53' },
-  detailOptionText: { color: '#334155', fontSize: 13 },
-  detailOptionTextActive: { color: '#FFFFFF', fontWeight: '700' },
+  detailSelect: { minHeight: 46, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.inputBackground },
+  detailSelectText: { flex: 1, color: colors.text, fontSize: 14 },
+  detailPlaceholder: { flex: 1, color: colors.textMuted, fontSize: 14 },
   finishedRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  addedDateText: { fontSize: 12, color: '#64748B' },
-  detailError: { color: '#B91C1C', fontSize: 13, fontWeight: '600' },
+  addedDateText: { fontSize: 12, color: colors.textMuted },
+  detailError: { color: colors.danger, fontSize: 13, fontWeight: '600' },
   detailActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  detailCancelButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#E2E8F0' },
-  detailCancelText: { color: '#334155', fontWeight: '700' },
-  detailSaveButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#1D2B53' },
-  detailSaveText: { color: '#FFFFFF', fontWeight: '700' },
-  detailDateBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: 'rgba(15, 23, 42, 0.4)' },
-  detailDateModal: { width: '100%', maxWidth: 380, padding: 12, borderRadius: 16, backgroundColor: '#FFFFFF' },
-  datePickerClose: { alignSelf: 'flex-end', padding: 10 },
+  detailCancelButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.surfaceSecondary },
+  detailCancelText: { color: colors.textSecondary, fontWeight: '700' },
+  detailSaveButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.primary },
+  detailSaveText: { color: colors.onPrimary, fontWeight: '700' },
 });

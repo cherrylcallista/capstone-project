@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { ActivityIndicator, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, SafeAreaView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { login } from '@/lib/api';
+import { AppText as Text, AppTextInput as TextInput } from '@/components/AppTypography';
+import { useAppTheme, useThemeStyles } from '@/theme/ThemeProvider';
 
 export default function LoginScreen() {
+	const { colors } = useAppTheme();
+	const styles = useThemeStyles(createStyles);
 	const router = useRouter();
 	const [email, setEmail] = useState('');
 	const [password, setPassword] = useState('');
@@ -50,7 +54,7 @@ export default function LoginScreen() {
 					onChangeText={setPassword}
 				/>
 				<TouchableOpacity style={styles.button} onPress={handleLogin} disabled={isLoading}>
-					{isLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Masuk</Text>}
+					{isLoading ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.buttonText}>Masuk</Text>}
 				</TouchableOpacity>
 				<TouchableOpacity onPress={() => router.push('/register')}>
 					<Text style={styles.register}>Belum punya akun? Daftar Sekarang</Text>
@@ -60,14 +64,14 @@ export default function LoginScreen() {
 	);
 }
 
-const styles = StyleSheet.create({
-	safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
+const createStyles = (colors: import('@/theme/ThemeProvider').AppThemeColors) => StyleSheet.create({
+	safeArea: { flex: 1, backgroundColor: colors.background },
 	container: { flex: 1, justifyContent: 'center', width: '90%', alignSelf: 'center', gap: 16 },
-	title: { fontSize: 26, fontWeight: '800', color: '#0F172A' },
-	subtitle: { fontSize: 14, color: '#64748B', lineHeight: 20, marginBottom: 12 },
-	error: { color: '#B91C1C', fontWeight: '600' },
-	input: { height: 52, borderRadius: 14, backgroundColor: '#F3F4F6', paddingHorizontal: 14, fontSize: 15 },
-	button: { height: 52, borderRadius: 14, backgroundColor: '#1D2B53', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-	buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-	register: { textAlign: 'center', color: '#1D2B53', fontWeight: '700', marginTop: 16 },
+	title: { fontSize: 26, fontWeight: '800', color: colors.text },
+	subtitle: { fontSize: 14, color: colors.textMuted, lineHeight: 20, marginBottom: 12 },
+	error: { color: colors.danger, fontWeight: '600' },
+	input: { height: 52, borderRadius: 14, backgroundColor: colors.inputBackground, paddingHorizontal: 14, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border },
+	button: { height: 52, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+	buttonText: { color: colors.onPrimary, fontSize: 16, fontWeight: '700' },
+	register: { textAlign: 'center', color: colors.primary, fontWeight: '700', marginTop: 16 },
 });

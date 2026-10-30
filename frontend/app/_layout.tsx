@@ -4,8 +4,17 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { Redirect, useSegments } from 'expo-router';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  Inter_900Black,
+} from '@expo-google-fonts/inter';
 
 import { hasStoredLogin, startOfflineSync, validateStoredLogin } from '@/lib/api';
+import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -23,6 +32,12 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_900Black,
   });
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -40,20 +55,17 @@ export default function RootLayout() {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <AppThemeProvider>
+      <RootLayoutNav />
+    </AppThemeProvider>
+  );
 }
-
-const WhiteTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: '#ffffff',
-  },
-};
 
 function RootLayoutNav() {
   const segments = useSegments();
   const [isAuthChecked, setIsAuthChecked] = useState(false);
+  const { colors, mode } = useAppTheme();
 
   useEffect(() => {
     let isCurrent = true;
@@ -87,10 +99,25 @@ function RootLayoutNav() {
   }
 
   return (
-    <ThemeProvider value={WhiteTheme}>
+    <ThemeProvider value={{
+      ...(mode === 'dark' ? DarkTheme : DefaultTheme),
+      colors: {
+        ...(mode === 'dark' ? DarkTheme.colors : DefaultTheme.colors),
+        background: colors.background,
+        card: colors.surface,
+        text: colors.text,
+        border: colors.border,
+        primary: colors.primary,
+      },
+    }}>
       <Stack
         screenOptions={{
-          contentStyle: { backgroundColor: '#ffffff' },
+          contentStyle: {
+            backgroundColor: colors.background,
+            width: '100%',
+            maxWidth: 480,
+            alignSelf: 'center',
+          },
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
